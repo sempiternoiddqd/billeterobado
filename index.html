@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Verificador de Billetes - Serie B</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #16a34a;
+            --danger: #dc2626;
+            --background: #f3f4f6;
+            --text: #1f2937;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--background);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        h1 { font-size: 1.5rem; text-align: center; margin-bottom: 0.5rem; }
+        p.subtitle { color: #6b7280; text-align: center; margin-bottom: 20px; max-width: 400px; font-size: 0.9rem; }
+
+        /* Contenedor de la cámara */
+        .camera-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            aspect-ratio: 4 / 3; /* Proporción estándar */
+            background: black;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Asegura que llene el contenedor */
+        }
+
+        /* Superposición de guía para enfocar el número */
+        .camera-guide {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70%;
+            height: 20%;
+            border: 2px dashed rgba(255, 255, 255, 0.7);
+            border-radius: 8px;
+            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.5); /* Oscurece el resto */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none; /* No interfiere con clics */
+        }
+
+        .camera-guide::after {
+            content: "Enfoque el número aquí";
+            color: white;
+            background: rgba(0,0,0,0.5);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+
+        /* Botón de acción */
+        #verifyBtn {
+            margin-top: 20px;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            width: 100%;
+            max-width: 300px;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 4px 6px rgba(37, 99, 235, 0.3);
+        }
+
+        #verifyBtn:active { transform: translateY(1px); box-shadow: 0 2px 3px rgba(37, 99, 235, 0.3); }
+        #verifyBtn:disabled { background-color: #9ca3af; cursor: not-allowed; box-shadow: none;}
+
+        /* Zona de resultados y loader */
+        #loading { display: none; margin-top: 15px; text-align: center; color: var(--primary);}
+        #loading .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid #e5e7eb; border-radius: 50%; border-top-color: var(--primary); animation: spin 1s ease-in-out infinite; margin-right: 8px;}
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+            display: none;
+        }
+
+        .result-ok { background-color: #d1fae5; color: var(--success); border: 1px solid #10b981; }
+        .result-robado { background-color: #fee2e2; color: var(--danger); border: 1px solid #ef4444; }
+        .result-error { background-color: #ffedd5; color: #a16207; border: 1px solid #f59e0b; }
+        .serial-text { font-weight: bold; font-family: monospace; font-size: 1.2rem; }
+
+        /* Canvas oculto para la captura de imagen */
+        #canvas { display: none; }
+    </style>
+</head>
+<body>
+
+    <h1>Verificador de Billetes</h1>
+    <p class="subtitle">Enfoque el número de serie de la Serie B dentro del recuadro y presione verificar.</p>
+
+    <div class="camera-container">
+        <video id="video" autoplay playsinline></video>
+        <div class="camera-guide"></div>
+    </div>
+
+    <button id="verifyBtn" onclick="processImage()">VERIFICAR</button>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <span>Procesando imagen con OCR...</span>
+    </div>
+
+    <div id="result"></div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // --- 1. BASE DE DATOS DE RANGOS (DE TU IMAGEN) ---
+        const billetesRobados = [
+            // Billetes de Bs50
+            { d: 50, des: 67250001, has: 67700000 }, { d: 50, des: 69050001, has: 69500000 },
+            { d: 50, des: 69500001, has: 69950000 }, { d: 50, des: 69950001, has: 70400000 },
+            { d: 50, des: 70400001, has: 70850000 }, { d: 50, des: 70850001, has: 71300000 },
+            { d: 50, des: 76310012, has: 85139995 }, { d: 50, des: 86400001, has: 86850000 },
+            { d: 50, des: 90900001, has: 91350000 }, { d: 50, des: 91800001, has: 92250000 },
+            // Billetes de Bs20
+            { d: 20, des: 87280145, has: 91646549 }, { d: 20, des: 96650001, has: 97100000 },
+            { d: 20, des: 99800001, has: 100250000 }, { d: 20, des: 100250001, has: 100700000 },
+            { d: 20, des: 109250001, has: 109700000 }, { d: 20, des: 110600001, has: 111050000 },
+            { d: 20, des: 111050001, has: 111500000 }, { d: 20, des: 111950001, has: 112400000 },
+            { d: 20, des: 112400001, has: 112850000 }, { d: 20, des: 112850001, has: 113300000 },
+            { d: 20, des: 114200001, has: 114650000 }, { d: 20, des: 114650001, has: 115100000 },
+            { d: 20, des: 115100001, has: 115550000 }, { d: 20, des: 118700001, has: 119150000 },
+            { d: 20, des: 119150001, has: 119600000 }, { d: 20, des: 120500001, has: 120950000 },
+            // Billetes de Bs10
+            { d: 10, des: 77100001, has: 77550000 }, { d: 10, des: 78000001, has: 78450000 },
+            { d: 10, des: 78900001, has: 96350000 }, { d: 10, des: 96350001, has: 96800000 },
+            { d: 10, des: 96800001, has: 97250000 }, { d: 10, des: 98150001, has: 98600000 },
+            { d: 10, des: 104900001, has: 105350000 }, { d: 10, des: 105350001, has: 105800000 },
+            { d: 10, des: 106700001, has: 107150000 }, { d: 10, des: 107600001, has: 108050000 },
+            { d: 10, des: 108050001, has: 108500000 }, { d: 10, des: 109400001, has: 109850000 }
+        ];
+
+        // --- 2. LOGICA DE VERIFICACION ---
+        function verificarBillete(numeroStr) {
+            // Limpia el texto para dejar solo números
+            const cleanNumStr = numeroStr.replace(/\D/g, ''); 
+            if (cleanNumStr.length < 5) return { e: "ERR", msg: "No se leyó un número válido" };
+            
+            const numStrFinal = cleanNumStr; // Usamos el string limpio
+            const num = parseInt(numStrFinal, 10);
+            
+            if (isNaN(num)) return { e: "ERR", msg: "Error al convertir número" };
+
+            // Buscar en la base de datos
+            const encontrado = billetesRobados.find(r => num >= r.des && num <= r.has);
+
+            if (encontrado) {
+                return { e: "ROBADO", n: numStrFinal, d: encontrado.d };
+            } else {
+                return { e: "OK", n: numStrFinal };
+            }
+        }
+
+        // --- 3. GESTIÓN DE LA CÁMARA (WEBRTC) ---
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const verifyBtn = document.getElementById('verifyBtn');
+        const loadingDiv = document.getElementById('loading');
+        const resultDiv = document.getElementById('result');
+
+        async function startCamera() {
+            try {
+                // Solicita permisos y configura la cámara trasera (environment)
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: "environment", // Prioriza la cámara trasera
+                        width: { ideal: 1280 }, // Intenta buena resolución
+                        height: { ideal: 720 }
+                    } 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("Error accediendo a la cámara:", err);
+                alert("No se pudo acceder a la cámara. Asegúrate de dar permisos y usar HTTPS.");
+                verifyBtn.disabled = true;
+            }
+        }
+
+        // Inicia la cámara al cargar la página
+        window.addEventListener('load', startCamera);
+
+        // --- 4. CAPTURA Y OCR (TESSERACT.JS) ---
+        async function processImage() {
+            // UI Setup
+            verifyBtn.disabled = true;
+            loadingDiv.style.display = "block";
+            resultDiv.style.display = "none";
+            resultDiv.className = ""; // Limpia clases previas
+
+            try {
+                // Captura el frame actual del video en el canvas
+                const ctx = canvas.getContext('2d');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                // Convierte el canvas a imagen Base64 para Tesseract
+                const dataUrl = canvas.toDataURL('image/png');
+
+                // Llama al motor de Tesseract.js para procesar en el navegador
+                // Usamos el idioma 'eng' porque los números de serie no requieren español
+                const worker = await Tesseract.createWorker('eng');
+                
+                // Opción para mejorar velocidad: Solo busca dígitos
+                // await worker.setParameters({ tessedit_char_whitelist: '0123456789' }); 
+
+                const resultOcr = await worker.recognize(dataUrl);
+                await worker.terminate(); // Libera memoria
+
+                const ocrText = resultOcr.data.text.trim();
+                console.log("OCR Texto detectado:", ocrText);
+
+                // --- 5. VERIFICACIÓN Y MOSTRAR RESULTADO ---
+                const resultadoLógica = verificarBillete(ocrText);
+
+                mostrarResultado(resultadoLógica);
+
+            } catch (error) {
+                console.error("Error en OCR:", error);
+                mostrarResultado({ e: "ERR", msg: "Falló el reconocimiento óptico" });
+            } finally {
+                // UI Cleanup
+                loadingDiv.style.display = "none";
+                verifyBtn.disabled = false;
+            }
+        }
+
+        function mostrarResultado(res) {
+            resultDiv.style.display = "block";
+
+            if (res.e === "OK") {
+                resultDiv.className = "result-ok";
+                resultDiv.innerHTML = `<strong>✔ BILLETE VÁLIDO</strong><br>Número: <span class="serial-text">${res.n}</span><br>No está en la lista de la Serie B sin valor.`;
+            } else if (res.e === "ROBADO") {
+                resultDiv.className = "result-robado";
+                resultDiv.innerHTML = `<strong>⚠ BILLETE SIN VALOR LEGAL (ROBADO)</strong><br>Número: <span class="serial-text">${res.n}</span><br>Aparente denominación: Bs${res.d}<br>¡No acepte este billete!`;
+            } else if (res.e === "ERR") {
+                resultDiv.className = "result-error";
+                resultDiv.innerHTML = `<strong>Error de lectura</strong><br>${res.msg}.<br>Alinee bien el número y presione VERIFICAR de nuevo.`;
+            }
+        }
+    </script>
+</body>
+</html>
