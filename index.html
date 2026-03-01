@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>x Verificador de Billetes Robados por algunso Alteños</title>
+    <title>yVerificador de Billetes - Serie B</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         :root {
@@ -28,7 +28,7 @@
         }
 
         h1 { font-size: 1.5rem; text-align: center; margin-bottom: 0.5rem; }
-        p.subtitle { color: #6b7280; text-align: center; margin-bottom: 20px; max-width: 400px; font-size: 0.9rem; }
+        p.subtitle { color: #6b7280; text-align: center; margin-bottom: 15px; max-width: 400px; font-size: 0.9rem; }
 
         .camera-container {
             position: relative;
@@ -60,11 +60,10 @@
             pointer-events: none;
         }
 
-        /* Etiqueta movida hacia arriba del rectángulo */
         .camera-guide::before {
             content: "Enfoque el número y la letra (Ej: 12345678 B)";
             position: absolute;
-            top: -35px; /* Lo empuja arriba del borde superior */
+            top: -35px;
             left: 50%;
             transform: translateX(-50%);
             color: white;
@@ -75,8 +74,42 @@
             white-space: nowrap;
         }
 
+        /* ESTILOS DEL WIDGET SELECTOR (Segmented Controls) */
+        .denomination-selector {
+            margin-top: 20px;
+            width: 100%;
+            max-width: 350px;
+            display: flex;
+            background-color: #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            padding: 4px;
+        }
+
+        .denomination-selector input[type="radio"] {
+            display: none;
+        }
+
+        .denomination-selector label {
+            flex: 1;
+            text-align: center;
+            padding: 10px 0;
+            font-weight: bold;
+            color: #4b5563;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+
+        /* Cuando un botón está seleccionado */
+        .denomination-selector input[type="radio"]:checked + label {
+            background-color: white;
+            color: var(--primary);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
         #verifyBtn {
-            margin-top: 25px;
+            margin-top: 20px;
             padding: 15px 30px;
             font-size: 1.1rem;
             font-weight: 600;
@@ -86,7 +119,7 @@
             border-radius: 50px;
             cursor: pointer;
             width: 100%;
-            max-width: 300px;
+            max-width: 350px;
             transition: background 0.2s, transform 0.1s;
         }
 
@@ -117,15 +150,26 @@
 </head>
 <body>
 
-    <h1>x Verificador de Billetes</h1>
-    <p class="subtitle">Solo válido para detectar billetes robados de la Serie B.</p>
+    <h1>yVerificador de Billetes</h1>
+    <p class="subtitle">Verifica los billetes robados por algunos alteños masistas y laristas que se robaron billetes de la Serie B y evitando que los médicos salven vidas en un trágico accidente.</p>
 
     <div class="camera-container">
         <video id="video" autoplay playsinline></video>
         <div class="camera-guide"></div>
     </div>
 
-    <button id="verifyBtn" onclick="processImage()">VERIFICAR</button>
+    <div class="denomination-selector">
+        <input type="radio" id="bs10" name="corte" value="10" checked>
+        <label for="bs10">Bs 10</label>
+
+        <input type="radio" id="bs20" name="corte" value="20">
+        <label for="bs20">Bs 20</label>
+
+        <input type="radio" id="bs50" name="corte" value="50">
+        <label for="bs50">Bs 50</label>
+    </div>
+
+    <button id="verifyBtn" onclick="processImage()">VERIFICAR BILLETE</button>
 
     <div id="loading">
         <div class="spinner"></div>
@@ -158,21 +202,18 @@
             { d: 10, des: 108050001, has: 108500000 }, { d: 10, des: 109400001, has: 109850000 }
         ];
 
-        // LÓGICA ACTUALIZADA PARA DETECTAR LA LETRA DE LA SERIE
-        function verificarBillete(ocrText) {
-            // Expresión Regular: Busca un bloque de al menos 5 números, 
-            // espacios opcionales, y luego una letra (A-Z)
+        // LÓGICA ACTUALIZADA: Recibe el corte seleccionado
+        function verificarBillete(ocrText, corteSeleccionado) {
             const match = ocrText.match(/(\d{5,})\s*([a-zA-Z])/);
 
             if (!match) {
-                return { e: "ERR", msg: "No se detectó claramente el número junto con su letra de serie (Ej: 12345678 B)." };
+                return { e: "ERR", msg: "No se detectó claramente el número junto con su letra de serie." };
             }
 
             const numStrFinal = match[1];
-            const serie = match[2].toUpperCase(); // Convierte la letra a mayúscula (a -> A, b -> B)
+            const serie = match[2].toUpperCase(); 
             const num = parseInt(numStrFinal, 10);
 
-            // 1. Si NO es Serie B, el billete es válido automáticamente
             if (serie !== 'B') {
                 return { 
                     e: "OK", 
@@ -182,8 +223,9 @@
                 };
             }
 
-            // 2. Si ES Serie B, verificamos si el número está en el rango robado
-            const encontrado = billetesRobados.find(r => num >= r.des && num <= r.has);
+            // FILTRAMOS la base de datos para buscar solo en el corte que el usuario seleccionó
+            const billetesDelCorte = billetesRobados.filter(rango => rango.d === corteSeleccionado);
+            const encontrado = billetesDelCorte.find(r => num >= r.des && num <= r.has);
 
             if (encontrado) {
                 return { e: "ROBADO", n: numStrFinal, s: serie, d: encontrado.d };
@@ -192,7 +234,7 @@
                     e: "OK", 
                     n: numStrFinal, 
                     s: serie, 
-                    msg: "Es Serie B, pero su numeración es legal y válida." 
+                    msg: `Es Serie B de Bs${corteSeleccionado}, pero su numeración es legal y válida.` 
                 };
             }
         }
@@ -225,6 +267,9 @@
             resultDiv.className = "";
 
             try {
+                // Capturamos qué corte está seleccionado en el HTML
+                const corteSeleccionado = parseInt(document.querySelector('input[name="corte"]:checked').value, 10);
+
                 const ctx = canvas.getContext('2d');
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
@@ -239,7 +284,8 @@
                 const ocrText = resultOcr.data.text.trim();
                 console.log("OCR Texto detectado en bruto:", ocrText);
 
-                const resultadoLógica = verificarBillete(ocrText);
+                // Pasamos el texto y el corte a la función validadora
+                const resultadoLógica = verificarBillete(ocrText, corteSeleccionado);
                 mostrarResultado(resultadoLógica);
 
             } catch (error) {
@@ -251,7 +297,6 @@
             }
         }
 
-        // MOSTRAR RESULTADO ACTUALIZADO CON LA SERIE
         function mostrarResultado(res) {
             resultDiv.style.display = "block";
 
@@ -264,7 +309,7 @@
                 resultDiv.className = "result-robado";
                 resultDiv.innerHTML = `<strong>⚠ BILLETE SIN VALOR (ROBADO)</strong><br>
                                        Lectura: <span class="serial-text">${res.n} ${res.s}</span><br>
-                                       Aparenta ser de: Bs${res.d}<br>
+                                       Corresponde a la lista de: Bs${res.d}<br>
                                        ¡No acepte este billete!`;
             } else if (res.e === "ERR") {
                 resultDiv.className = "result-error";
