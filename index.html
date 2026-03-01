@@ -30,12 +30,11 @@
         h1 { font-size: 1.5rem; text-align: center; margin-bottom: 0.5rem; }
         p.subtitle { color: #6b7280; text-align: center; margin-bottom: 20px; max-width: 400px; font-size: 0.9rem; }
 
-        /* Contenedor de la cámara */
         .camera-container {
             position: relative;
             width: 100%;
             max-width: 500px;
-            aspect-ratio: 4 / 3; /* Proporción estándar */
+            aspect-ratio: 4 / 3;
             background: black;
             border-radius: 12px;
             overflow: hidden;
@@ -45,38 +44,39 @@
         #video {
             width: 100%;
             height: 100%;
-            object-fit: cover; /* Asegura que llene el contenedor */
+            object-fit: cover;
         }
 
-        /* Superposición de guía para enfocar el número */
         .camera-guide {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 70%;
+            width: 75%;
             height: 20%;
-            border: 2px dashed rgba(255, 255, 255, 0.7);
+            border: 2px dashed rgba(255, 255, 255, 0.8);
             border-radius: 8px;
-            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.5); /* Oscurece el resto */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            pointer-events: none; /* No interfiere con clics */
+            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
         }
 
-        .camera-guide::after {
-            content: "Enfoque el número aquí";
+        /* Etiqueta movida hacia arriba del rectángulo */
+        .camera-guide::before {
+            content: "Enfoque el número y la letra (Ej: 12345678 B)";
+            position: absolute;
+            top: -35px; /* Lo empuja arriba del borde superior */
+            left: 50%;
+            transform: translateX(-50%);
             color: white;
-            background: rgba(0,0,0,0.5);
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 0.8rem;
+            background: rgba(0,0,0,0.7);
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            white-space: nowrap;
         }
 
-        /* Botón de acción */
         #verifyBtn {
-            margin-top: 20px;
+            margin-top: 25px;
             padding: 15px 30px;
             font-size: 1.1rem;
             font-weight: 600;
@@ -88,13 +88,11 @@
             width: 100%;
             max-width: 300px;
             transition: background 0.2s, transform 0.1s;
-            box-shadow: 0 4px 6px rgba(37, 99, 235, 0.3);
         }
 
-        #verifyBtn:active { transform: translateY(1px); box-shadow: 0 2px 3px rgba(37, 99, 235, 0.3); }
-        #verifyBtn:disabled { background-color: #9ca3af; cursor: not-allowed; box-shadow: none;}
+        #verifyBtn:active { transform: translateY(1px); }
+        #verifyBtn:disabled { background-color: #9ca3af; cursor: not-allowed; }
 
-        /* Zona de resultados y loader */
         #loading { display: none; margin-top: 15px; text-align: center; color: var(--primary);}
         #loading .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid #e5e7eb; border-radius: 50%; border-top-color: var(--primary); animation: spin 1s ease-in-out infinite; margin-right: 8px;}
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -114,14 +112,13 @@
         .result-error { background-color: #ffedd5; color: #a16207; border: 1px solid #f59e0b; }
         .serial-text { font-weight: bold; font-family: monospace; font-size: 1.2rem; }
 
-        /* Canvas oculto para la captura de imagen */
         #canvas { display: none; }
     </style>
 </head>
 <body>
 
     <h1>Verificador de Billetes</h1>
-    <p class="subtitle">Enfoque el número de serie de la Serie B dentro del recuadro y presione verificar.</p>
+    <p class="subtitle">Solo válido para detectar billetes robados de la Serie B.</p>
 
     <div class="camera-container">
         <video id="video" autoplay playsinline></video>
@@ -132,23 +129,19 @@
 
     <div id="loading">
         <div class="spinner"></div>
-        <span>Procesando imagen con OCR...</span>
+        <span>Leyendo serie...</span>
     </div>
 
     <div id="result"></div>
-
     <canvas id="canvas"></canvas>
 
     <script>
-        // --- 1. BASE DE DATOS DE RANGOS (DE TU IMAGEN) ---
         const billetesRobados = [
-            // Billetes de Bs50
             { d: 50, des: 67250001, has: 67700000 }, { d: 50, des: 69050001, has: 69500000 },
             { d: 50, des: 69500001, has: 69950000 }, { d: 50, des: 69950001, has: 70400000 },
             { d: 50, des: 70400001, has: 70850000 }, { d: 50, des: 70850001, has: 71300000 },
             { d: 50, des: 76310012, has: 85139995 }, { d: 50, des: 86400001, has: 86850000 },
             { d: 50, des: 90900001, has: 91350000 }, { d: 50, des: 91800001, has: 92250000 },
-            // Billetes de Bs20
             { d: 20, des: 87280145, has: 91646549 }, { d: 20, des: 96650001, has: 97100000 },
             { d: 20, des: 99800001, has: 100250000 }, { d: 20, des: 100250001, has: 100700000 },
             { d: 20, des: 109250001, has: 109700000 }, { d: 20, des: 110600001, has: 111050000 },
@@ -157,7 +150,6 @@
             { d: 20, des: 114200001, has: 114650000 }, { d: 20, des: 114650001, has: 115100000 },
             { d: 20, des: 115100001, has: 115550000 }, { d: 20, des: 118700001, has: 119150000 },
             { d: 20, des: 119150001, has: 119600000 }, { d: 20, des: 120500001, has: 120950000 },
-            // Billetes de Bs10
             { d: 10, des: 77100001, has: 77550000 }, { d: 10, des: 78000001, has: 78450000 },
             { d: 10, des: 78900001, has: 96350000 }, { d: 10, des: 96350001, has: 96800000 },
             { d: 10, des: 96800001, has: 97250000 }, { d: 10, des: 98150001, has: 98600000 },
@@ -166,28 +158,45 @@
             { d: 10, des: 108050001, has: 108500000 }, { d: 10, des: 109400001, has: 109850000 }
         ];
 
-        // --- 2. LOGICA DE VERIFICACION ---
-        function verificarBillete(numeroStr) {
-            // Limpia el texto para dejar solo números
-            const cleanNumStr = numeroStr.replace(/\D/g, ''); 
-            if (cleanNumStr.length < 5) return { e: "ERR", msg: "No se leyó un número válido" };
-            
-            const numStrFinal = cleanNumStr; // Usamos el string limpio
-            const num = parseInt(numStrFinal, 10);
-            
-            if (isNaN(num)) return { e: "ERR", msg: "Error al convertir número" };
+        // LÓGICA ACTUALIZADA PARA DETECTAR LA LETRA DE LA SERIE
+        function verificarBillete(ocrText) {
+            // Expresión Regular: Busca un bloque de al menos 5 números, 
+            // espacios opcionales, y luego una letra (A-Z)
+            const match = ocrText.match(/(\d{5,})\s*([a-zA-Z])/);
 
-            // Buscar en la base de datos
+            if (!match) {
+                return { e: "ERR", msg: "No se detectó claramente el número junto con su letra de serie (Ej: 12345678 B)." };
+            }
+
+            const numStrFinal = match[1];
+            const serie = match[2].toUpperCase(); // Convierte la letra a mayúscula (a -> A, b -> B)
+            const num = parseInt(numStrFinal, 10);
+
+            // 1. Si NO es Serie B, el billete es válido automáticamente
+            if (serie !== 'B') {
+                return { 
+                    e: "OK", 
+                    n: numStrFinal, 
+                    s: serie, 
+                    msg: `Al ser Serie ${serie}, no pertenece al lote de billetes robados.` 
+                };
+            }
+
+            // 2. Si ES Serie B, verificamos si el número está en el rango robado
             const encontrado = billetesRobados.find(r => num >= r.des && num <= r.has);
 
             if (encontrado) {
-                return { e: "ROBADO", n: numStrFinal, d: encontrado.d };
+                return { e: "ROBADO", n: numStrFinal, s: serie, d: encontrado.d };
             } else {
-                return { e: "OK", n: numStrFinal };
+                return { 
+                    e: "OK", 
+                    n: numStrFinal, 
+                    s: serie, 
+                    msg: "Es Serie B, pero su numeración es legal y válida." 
+                };
             }
         }
 
-        // --- 3. GESTIÓN DE LA CÁMARA (WEBRTC) ---
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const verifyBtn = document.getElementById('verifyBtn');
@@ -196,83 +205,72 @@
 
         async function startCamera() {
             try {
-                // Solicita permisos y configura la cámara trasera (environment)
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: "environment", // Prioriza la cámara trasera
-                        width: { ideal: 1280 }, // Intenta buena resolución
-                        height: { ideal: 720 }
-                    } 
+                    video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } 
                 });
                 video.srcObject = stream;
             } catch (err) {
-                console.error("Error accediendo a la cámara:", err);
-                alert("No se pudo acceder a la cámara. Asegúrate de dar permisos y usar HTTPS.");
+                console.error("Error cámara:", err);
+                alert("No se pudo acceder a la cámara. Revisa los permisos.");
                 verifyBtn.disabled = true;
             }
         }
 
-        // Inicia la cámara al cargar la página
         window.addEventListener('load', startCamera);
 
-        // --- 4. CAPTURA Y OCR (TESSERACT.JS) ---
         async function processImage() {
-            // UI Setup
             verifyBtn.disabled = true;
             loadingDiv.style.display = "block";
             resultDiv.style.display = "none";
-            resultDiv.className = ""; // Limpia clases previas
+            resultDiv.className = "";
 
             try {
-                // Captura el frame actual del video en el canvas
                 const ctx = canvas.getContext('2d');
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-                // Convierte el canvas a imagen Base64 para Tesseract
                 const dataUrl = canvas.toDataURL('image/png');
-
-                // Llama al motor de Tesseract.js para procesar en el navegador
-                // Usamos el idioma 'eng' porque los números de serie no requieren español
                 const worker = await Tesseract.createWorker('eng');
                 
-                // Opción para mejorar velocidad: Solo busca dígitos
-                // await worker.setParameters({ tessedit_char_whitelist: '0123456789' }); 
-
                 const resultOcr = await worker.recognize(dataUrl);
-                await worker.terminate(); // Libera memoria
+                await worker.terminate();
 
                 const ocrText = resultOcr.data.text.trim();
-                console.log("OCR Texto detectado:", ocrText);
+                console.log("OCR Texto detectado en bruto:", ocrText);
 
-                // --- 5. VERIFICACIÓN Y MOSTRAR RESULTADO ---
                 const resultadoLógica = verificarBillete(ocrText);
-
                 mostrarResultado(resultadoLógica);
 
             } catch (error) {
-                console.error("Error en OCR:", error);
+                console.error("Error OCR:", error);
                 mostrarResultado({ e: "ERR", msg: "Falló el reconocimiento óptico" });
             } finally {
-                // UI Cleanup
                 loadingDiv.style.display = "none";
                 verifyBtn.disabled = false;
             }
         }
 
+        // MOSTRAR RESULTADO ACTUALIZADO CON LA SERIE
         function mostrarResultado(res) {
             resultDiv.style.display = "block";
 
             if (res.e === "OK") {
                 resultDiv.className = "result-ok";
-                resultDiv.innerHTML = `<strong>✔ BILLETE VÁLIDO</strong><br>Número: <span class="serial-text">${res.n}</span><br>No está en la lista de la Serie B sin valor.`;
+                resultDiv.innerHTML = `<strong>✔ BILLETE VÁLIDO</strong><br>
+                                       Lectura: <span class="serial-text">${res.n} ${res.s}</span><br>
+                                       <small>${res.msg}</small>`;
             } else if (res.e === "ROBADO") {
                 resultDiv.className = "result-robado";
-                resultDiv.innerHTML = `<strong>⚠ BILLETE SIN VALOR LEGAL (ROBADO)</strong><br>Número: <span class="serial-text">${res.n}</span><br>Aparente denominación: Bs${res.d}<br>¡No acepte este billete!`;
+                resultDiv.innerHTML = `<strong>⚠ BILLETE SIN VALOR (ROBADO)</strong><br>
+                                       Lectura: <span class="serial-text">${res.n} ${res.s}</span><br>
+                                       Aparenta ser de: Bs${res.d}<br>
+                                       ¡No acepte este billete!`;
             } else if (res.e === "ERR") {
                 resultDiv.className = "result-error";
-                resultDiv.innerHTML = `<strong>Error de lectura</strong><br>${res.msg}.<br>Alinee bien el número y presione VERIFICAR de nuevo.`;
+                resultDiv.innerHTML = `<strong>Error de lectura</strong><br>
+                                       ${res.msg}<br>
+                                       Intente enfocar mejor.`;
             }
         }
     </script>
